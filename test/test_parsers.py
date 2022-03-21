@@ -85,3 +85,19 @@ def test_greedy_either():
     nd = FileData("aBc#")
     (_, res) = _ascii(nd)
     assert res.val == ["a", "B", "c", "#"]
+
+
+def test_optional():
+    num = FileData("1.23")
+    _nums = either([character(str(e)) for e in range(10)], "Numbers")
+    _dot = character(".")
+    _number = optional(
+        _nums, andthen(_dot, greedy(_nums, "fractions"), "Fraction"), "Number"
+    )
+    (_, res) = _number(num)
+    assert isinstance(res, Success)
+    assert res.val == ("1", (".", ("2", "3")))
+
+    num = FileData("2")
+    (_, res) = _number(num)
+    assert res.val == ("2")

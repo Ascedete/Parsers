@@ -68,6 +68,22 @@ def either(parsers: list[ParserFunction[Any]], label: str) -> ParserFunction[Any
     return parser
 
 
+def optional(mandatory: ParserFunction[_T], opt: ParserFunction[_T2], label: str):
+    def parser(data: FileData):
+        (d, res) = mandatory(data)
+        if isinstance(res, Error):
+            return (data, Error(f"Failed to parse {label}"))
+
+        (d, opt_res) = opt(d)
+        if isinstance(opt_res, Error):
+            return (d, Success(res.val))
+        else:
+            return (d, Success((res.val, opt_res.val)))
+
+    parser.__name__ = label
+    return parser
+
+
 def transform(p: ParserFunction[_T], f: Callable[[_T], _T2]) -> ParserFunction[_T2]:
     def parser(data: FileData):
         (d, res) = p(data)
@@ -79,7 +95,7 @@ def transform(p: ParserFunction[_T], f: Callable[[_T], _T2]) -> ParserFunction[_
     return parser
 
 
-def greedy(p: ParserFunction[_T], label: str) -> ParserFunction[list[_T]]:
+def greedy(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
     def parser(data: FileData):
         d = data.copy()
         collection: list[_T] = []
@@ -90,7 +106,7 @@ def greedy(p: ParserFunction[_T], label: str) -> ParserFunction[list[_T]]:
             else:
                 break
         if collection:
-            return (d, Success(collection))
+            return (d, Success(tuple(collection)))
         else:
             return (data, Error("Failed to parse {label}"))
 
