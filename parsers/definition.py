@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from filedata.result import Result, Error, Success
 from filedata.filedata import FileData
 
@@ -54,26 +55,14 @@ def andthen(
     return parser
 
 
-def either(
-    p1: ParserFunction[_T], p2: ParserFunction[_T2], label: str
-) -> ParserFunction[_T | _T2]:
-    def parser(data: FileData) -> ExtractionResult[_T | _T2]:
-        d1, res1 = p1(data)
-        if isinstance(res1, Success):
-            return (d1, Success(res1.val))
-
-        (d2, res2) = p2(data)
-        if isinstance(res2, Success):
-            return (d2, Success(res2.val))
-        else:
-            return (
-                data,
-                Error(
-                    f"{parser.__name__} failed parsing from {data.cursor}\n"
-                    + f"-> {res1}\n"
-                    + f"-> {res2}\n"
-                ),
-            )
+def either(parsers: list[ParserFunction[Any]], label: str) -> ParserFunction[Any]:
+    def parser(data: FileData):
+        for p in parsers:
+            (d, res) = p(data)
+            if isinstance(res, Success):
+                return (d, res)
+        errmsg = "Failed to parse {parser.__name__}"
+        return (data, Error(errmsg))
 
     parser.__name__ = label
     return parser
@@ -90,18 +79,33 @@ def transform(p: ParserFunction[_T], f: Callable[[_T], _T2]) -> ParserFunction[_
     return parser
 
 
-def multiple(
-    p: ParserFunction[_T], number: int, label: str
-) -> ParserFunction[tuple[_T]]:
-    # p_new = reduce(lambda p1, p2: andthen(p1, p2, ""), [p for _ in range(1, number)])
-
+def greedy(p: ParserFunction[_T], label: str) -> ParserFunction[list[_T]]:
     def parser(data: FileData):
-        d = data
+        d = data.copy()
         collection: list[_T] = []
-        for i in range(1, number):
+        while 1:
+            (d, res) = p(d)
+            if isinstance(res, Success):
+                collection.append(res.val)
+            else:
+                break
+        if collection:
+            return (d, Success(collection))
+        else:
+            return (data, Error("Failed to parse {label}"))
+
+    parser.__name__ = label
+    return parser
+
+
+def chain(parsers: list[ParserFunction[Any]], label: str):
+    def parser(data: FileData):
+        collection: list[Any] = []
+        d = data.copy()
+        for p in parsers:
             (d, res) = p(d)
             if isinstance(res, Error):
-                errmsg = f"Parsing failed for {label} at iteration {i} -> {res}"
+                errmsg = f"Parsing failed for {p.__name__} -> {res}"
                 return (data, Error(errmsg))
             else:
                 collection.append(res.val)
@@ -111,7 +115,17 @@ def multiple(
     return parser
 
 
-def seperate(
+def multiple(
+    p: ParserFunction[_T], number: int, label: str
+) -> ParserFunction[tuple[_T]]:
+
+    parser = chain(list(map(lambda _: p, range(number))), label)
+
+    parser.__name__ = label
+    return parser
+
+
+def ignore(
     seperator: ParserFunction[Any], p: ParserFunction[_T], label: str
 ) -> ParserFunction[_T]:
     def parser(data: FileData):
@@ -121,6 +135,28 @@ def seperate(
             return (data, Error(errmsg))
 
         return p(d)
+
+    parser.__name__ = label
+    return parser
+
+
+def seperate(
+    seperator: ParserFunction[Any],
+    p: ParserFunction[_T],
+    p2: ParserFunction[_T2],
+    label: str,
+) -> ParserFunction[tuple[_T, _T2]]:
+
+    e = chain([p, seperator, p2], "")
+
+    def parser(data: FileData):
+        (d, res) = e(data)
+        if isinstance(res, Error):
+            errmsg = f"Parsing failed for {parser.__name__} -> {res}"
+            return (data, Error(errmsg))
+        else:
+            items = (res.val[0], res.val[2])
+            return (d, Success(items))
 
     parser.__name__ = label
     return parser
