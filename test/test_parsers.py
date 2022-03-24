@@ -84,7 +84,7 @@ def test_greedy_either():
     _ascii = greedy(either([character(c) for c in chrs], "Ascii Characters"), "Words")
     nd = FileData("aBc#")
     (_, res) = _ascii(nd)
-    assert res.val == ["a", "B", "c", "#"]
+    assert res.val == ("a", "B", "c", "#")
 
 
 def test_optional():
