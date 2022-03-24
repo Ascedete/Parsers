@@ -21,7 +21,7 @@ def character(c: str) -> ParserFunction[str]:
             new_data.consume()
             return (new_data, Success(f"{c}"))
         else:
-            return (data, Error(f"{c} not found"))
+            return (data, Error(f"{c} not found at {data.cursor}"))
 
     parser.__name__ = "Parse" + c
     return parser
@@ -61,7 +61,7 @@ def either(parsers: list[ParserFunction[Any]], label: str) -> ParserFunction[Any
             (d, res) = p(data)
             if isinstance(res, Success):
                 return (d, res)
-        errmsg = "Failed to parse {parser.__name__}"
+        errmsg = f"Failed to parse {parser.__name__} -> {res}"
         return (data, Error(errmsg))
 
     parser.__name__ = label
@@ -72,7 +72,7 @@ def optional(mandatory: ParserFunction[_T], opt: ParserFunction[_T2], label: str
     def parser(data: FileData):
         (d, res) = mandatory(data)
         if isinstance(res, Error):
-            return (data, Error(f"Failed to parse {label}"))
+            return (data, Error(f"Failed to parse {mandatory.__name__} -> {res}"))
 
         (d, opt_res) = opt(d)
         if isinstance(opt_res, Error):
@@ -108,7 +108,7 @@ def greedy(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
         if collection:
             return (d, Success(tuple(collection)))
         else:
-            return (data, Error("Failed to parse {label}"))
+            return (data, Error(f"Failed to parse {parser.__name__}"))
 
     parser.__name__ = label
     return parser
