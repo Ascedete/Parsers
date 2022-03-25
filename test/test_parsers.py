@@ -101,3 +101,16 @@ def test_optional():
     num = FileData("2")
     (_, res) = _number(num)
     assert res.val == ("2")
+
+
+def test_atmost():
+    expr = FileData("  ")
+    p = atmost(character(" "), 1)
+    (_, res) = p(expr)
+    assert isinstance(res, Error)
+
+    expr = FileData(" d")
+    (d, res) = p(expr)
+    assert res
+    (_, res) = character("d")(d)
+    assert res

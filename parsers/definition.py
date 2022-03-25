@@ -176,3 +176,24 @@ def seperate(
 
     parser.__name__ = label
     return parser
+
+
+def atmost(p: ParserFunction[_T], n: int):
+    def parser(data: FileData):
+        d = data.copy()
+        coll: list[_T] = []
+        for _ in range(n):
+            (d2, res) = p(d)
+            if isinstance(res, Success):
+                coll.append(res.val)
+            else:
+                return (d, Success(tuple(coll)))
+            d = d2
+        (d2, res) = p(d)
+        if res:
+            errmsg = f"Found {n+1} matches for {p.__name__} but only expected {n}!"
+            return (data, Error(errmsg))
+        else:
+            return (d2, Success(coll))
+
+    return parser
