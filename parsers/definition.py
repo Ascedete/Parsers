@@ -14,6 +14,19 @@ _T2 = TypeVar("_T2")
 ParserFunction = Callable[[FileData], ExtractionResult[_T]]
 
 
+def satisfy(predicate: Callable[[str], bool], label: str):
+    def parser(data: FileData):
+        new_data = data.copy()
+        if (char := data.read()) and predicate(char):
+            new_data.consume()
+            return (new_data, Success(char))
+        else:
+            errmsg = f"Predicate {label} failed at {data.cursor}"
+            return (data, Error(errmsg))
+
+    return parser
+
+
 def character(c: str) -> ParserFunction[str]:
     def parser(data: FileData) -> ExtractionResult[str]:
         new_data = data.copy()
@@ -95,7 +108,26 @@ def transform(p: ParserFunction[_T], f: Callable[[_T], _T2]) -> ParserFunction[_
     return parser
 
 
-def greedy(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
+def many(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
+    def parser(data: FileData):
+        d = data.copy()
+        collection: list[_T] = []
+        while 1:
+            (d, res) = p(d)
+            if isinstance(res, Success):
+                collection.append(res.val)
+            else:
+                break
+        if collection:
+            return (d, Success(tuple(collection)))
+        else:
+            return (data, Error(f"Failed to parse {parser.__name__}"))
+
+    parser.__name__ = label
+    return parser
+
+
+def atleast_one(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
     def parser(data: FileData):
         d = data.copy()
         collection: list[_T] = []
@@ -191,7 +223,7 @@ def atmost(p: ParserFunction[_T], n: int):
             d = d2
         (d2, res) = p(d)
         if res:
-            errmsg = f"Found {n+1} matches for {p.__name__} but only expected {n}!"
+            errmsg = f"Found {n+1} matches for {p.__name__} but only expected {n} in {d.cursor}"
             return (data, Error(errmsg))
         else:
             return (d2, Success(coll))

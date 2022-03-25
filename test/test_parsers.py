@@ -81,7 +81,7 @@ def test_seperate():
 
 def test_greedy_either():
     chrs = [chr(i) for i in range(32, 127)]
-    _ascii = greedy(either([character(c) for c in chrs], "Ascii Characters"), "Words")
+    _ascii = many(either([character(c) for c in chrs], "Ascii Characters"), "Words")
     nd = FileData("aBc#")
     (_, res) = _ascii(nd)
     assert res.val == ("a", "B", "c", "#")
@@ -92,7 +92,7 @@ def test_optional():
     _nums = either([character(str(e)) for e in range(10)], "Numbers")
     _dot = character(".")
     _number = optional(
-        _nums, andthen(_dot, greedy(_nums, "fractions"), "Fraction"), "Number"
+        _nums, andthen(_dot, many(_nums, "fractions"), "Fraction"), "Number"
     )
     (_, res) = _number(num)
     assert isinstance(res, Success)
@@ -113,4 +113,14 @@ def test_atmost():
     (d, res) = p(expr)
     assert res
     (_, res) = character("d")(d)
+    assert res
+
+
+def test_satisfy():
+    expr = FileData(" \n\tc")
+    space = satisfy(lambda c: c.isspace(), "Whitespace")
+    spaces = many(space, "Spaces")
+    (d, res) = spaces(expr)
+    assert res
+    (_, res) = character("c")(d)
     assert res
