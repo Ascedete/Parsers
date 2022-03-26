@@ -124,3 +124,24 @@ def test_satisfy():
     assert res
     (_, res) = character("c")(d)
     assert res
+
+
+def test_termination():
+    """Make sure that parsing terminates with error after input parsed"""
+    nd = FileData("Alle lieben Leute")
+    char = either(
+        [satisfy(lambda c: c.isalnum(), "Alphanumeric Character"), character("_")],
+        "Character",
+    )
+    word = atleast_one(char, "Word")
+    seperated_words = many(
+        andthen(character(" "), word, "Seperated Word"), "Seperated Words"
+    )
+
+    sentence = optional(
+        word,
+        seperated_words,
+        "Sentence",
+    )
+    (_, res) = sentence(nd)
+    assert res
