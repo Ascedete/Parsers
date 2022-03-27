@@ -226,6 +226,6 @@ def atmost(p: ParserFunction[_T], n: int):
             errmsg = f"Found {n+1} matches for {p.__name__} but only expected {n} in {d.cursor}"
             return (data, Error(errmsg))
         else:
-            return (d2, Success(coll))
+            return (d2, Success(tuple(coll)))
 
     return parser
