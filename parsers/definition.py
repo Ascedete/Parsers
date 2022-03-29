@@ -3,7 +3,7 @@ from __future__ import annotations
 from filedata.result import Result, Error, Success
 from filedata.filedata import FileData
 
-from typing import Any, Callable, Tuple, TypeVar
+from typing import Any, Callable, Optional, Tuple, TypeVar
 
 _T = TypeVar("_T")
 
@@ -12,6 +12,14 @@ ExtractionResult = Tuple[FileData, Result[_T]]
 _T2 = TypeVar("_T2")
 
 ParserFunction = Callable[[FileData], ExtractionResult[_T]]
+
+
+def generic_errmsg(label: str, data: FileData, reason: Optional[str] = None):
+    return (
+        f"Failed to parse {label} at {data.cursor}" + ""
+        if reason is None
+        else f"-> {reason}"
+    )
 
 
 def satisfy(predicate: Callable[[str], bool], label: str):
@@ -48,19 +56,11 @@ def andthen(
     def parser(data: FileData) -> ExtractionResult[tuple[_T, _T2]]:
         d1, res1 = p1(data)
         if isinstance(res1, Error):
-            errmsg = (
-                f"{parser.__name__} failed parsing from {data.cursor}\n"
-                + f"-> {res1}\n"
-            )
-            return (data, Error(errmsg))
+            return (data, Error(generic_errmsg(label, data, res1.val)))
 
         (d2, res2) = p2(d1)
         if isinstance(res2, Error):
-            errmsg = (
-                f"{parser.__name__} failed parsing from {data.cursor}\n"
-                + f"-> {res1}\n"
-            )
-            return (data, Error(errmsg))
+            return (data, Error(generic_errmsg(label, data, res2.val)))
         else:
             return (d2, Success((res1.val, res2.val)))
 
@@ -74,10 +74,39 @@ def either(parsers: list[ParserFunction[Any]], label: str) -> ParserFunction[Any
             (d, res) = p(data)
             if isinstance(res, Success):
                 return (d, res)
-        errmsg = f"Failed to parse {parser.__name__} -> {res}"
-        return (data, Error(errmsg))
+        return (data, Error(generic_errmsg(label, data)))
 
     parser.__name__ = label
+    return parser
+
+
+def left_seperate(optional: ParserFunction[Any], mandatory: ParserFunction[_T]):
+    def parser(data: FileData):
+        (d, res) = optional(data)
+        if not res:
+            return (data, res)
+
+        (d, res) = mandatory(d)
+        if isinstance(res, Error):
+            return (data, res)
+        else:
+            return (d, res)
+
+    return parser
+
+
+def right_seperate(mandatory: ParserFunction[_T], opt: ParserFunction[_T2]):
+    def parser(data: FileData):
+        (d, res) = mandatory(data)
+        if isinstance(res, Error):
+            return (data, res)
+
+        (d, opt_res) = opt(d)
+        if isinstance(opt_res, Error):
+            return (d, opt_res)
+        else:
+            return (d, res)
+
     return parser
 
 
@@ -85,7 +114,7 @@ def optional(mandatory: ParserFunction[_T], opt: ParserFunction[_T2], label: str
     def parser(data: FileData):
         (d, res) = mandatory(data)
         if isinstance(res, Error):
-            return (data, Error(f"Failed to parse {mandatory.__name__} -> {res}"))
+            return (data, Error(generic_errmsg(label, data, res.val)))
 
         (d, opt_res) = opt(d)
         if isinstance(opt_res, Error):
@@ -121,7 +150,7 @@ def many(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
         if collection:
             return (d, Success(tuple(collection)))
         else:
-            return (data, Error(f"Failed to parse {parser.__name__}"))
+            return (data, Error(generic_errmsg(label, data)))
 
     parser.__name__ = label
     return parser
@@ -140,7 +169,7 @@ def atleast_one(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
         if collection:
             return (d, Success(tuple(collection)))
         else:
-            return (data, Error(f"Failed to parse {parser.__name__}"))
+            return (data, Error(generic_errmsg(label, data)))
 
     parser.__name__ = label
     return parser
@@ -153,8 +182,8 @@ def chain(parsers: list[ParserFunction[Any]], label: str):
         for p in parsers:
             (d, res) = p(d)
             if isinstance(res, Error):
-                errmsg = f"Parsing failed for {p.__name__} -> {res}"
-                return (data, Error(errmsg))
+
+                return (data, Error(generic_errmsg(label, data, res.val)))
             else:
                 collection.append(res.val)
         return (d, Success(tuple(collection)))
@@ -179,8 +208,8 @@ def ignore(
     def parser(data: FileData):
         (d, res) = seperator(data)
         if isinstance(res, Error):
-            errmsg = f"Parsing failed for {parser.__name__} -> {res}"
-            return (data, Error(errmsg))
+
+            return (data, Error(generic_errmsg(label, data, res.val)))
 
         return p(d)
 
@@ -200,8 +229,7 @@ def seperate(
     def parser(data: FileData):
         (d, res) = e(data)
         if isinstance(res, Error):
-            errmsg = f"Parsing failed for {parser.__name__} -> {res}"
-            return (data, Error(errmsg))
+            return (data, Error(generic_errmsg(label, data, res.val)))
         else:
             items = (res.val[0], res.val[2])
             return (d, Success(items))
@@ -223,8 +251,11 @@ def atmost(p: ParserFunction[_T], n: int):
             d = d2
         (d2, res) = p(d)
         if res:
-            errmsg = f"Found {n+1} matches for {p.__name__} but only expected {n} in {d.cursor}"
-            return (data, Error(errmsg))
+            reason = f"Found {n+1} matches for {p.__name__} but only expected {n} in {d.cursor}"
+            return (
+                data,
+                Error(generic_errmsg(f"Atmost {n+1} {p.__name__}", data, reason)),
+            )
         else:
             return (d2, Success(tuple(coll)))
 
