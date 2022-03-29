@@ -260,3 +260,11 @@ def atmost(p: ParserFunction[_T], n: int):
             return (d2, Success(tuple(coll)))
 
     return parser
+
+
+def string(reference: str) -> ParserFunction[tuple[str]]:
+    def parser(data: FileData):
+        parsers = [character(c) for c in reference]
+        return chain(parsers, reference)(data)
+
+    return parser

@@ -188,3 +188,10 @@ def test_long_text():
     (d, res) = text(nd)
     assert res
     assert d.consume() and d.isEOF()
+
+
+def test_string():
+    nd = FileData("Reference!")
+    parser = string("Reference!")
+    (_, res) = parser(nd)
+    assert res
