@@ -268,3 +268,7 @@ def string(reference: str) -> ParserFunction[tuple[str]]:
         return chain(parsers, reference)(data)
 
     return parser
+
+
+def any(data: FileData):
+    return satisfy(lambda c: True, "Anything")(data)

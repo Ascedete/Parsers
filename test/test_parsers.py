@@ -195,3 +195,11 @@ def test_string():
     parser = string("Reference!")
     (_, res) = parser(nd)
     assert res
+
+
+def test_any():
+    input = "123ojmfälasdkas+ ;-:"
+    nd = FileData(input)
+    (_, res) = many(any, "Any Char")(nd)
+    assert res
+    assert len(res.val) == len(input) + 1
