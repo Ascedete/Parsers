@@ -91,8 +91,8 @@ def test_optional():
     num = FileData("1.23")
     _nums = either([character(str(e)) for e in range(10)], "Numbers")
     _dot = character(".")
-    _number = optional(
-        _nums, andthen(_dot, many(_nums, "fractions"), "Fraction"), "Number"
+    _number = andthen(
+        _nums, optional(andthen(_dot, many(_nums, "fractions"), "Fraction")), "Number"
     )
     (_, res) = _number(num)
     assert isinstance(res, Success)
@@ -100,7 +100,7 @@ def test_optional():
 
     num = FileData("2")
     (_, res) = _number(num)
-    assert res.val == ("2")
+    assert res.val[0] == ("2")
 
 
 def test_atmost():
@@ -138,11 +138,7 @@ def test_termination():
         andthen(character(" "), word, "Seperated Word"), "Seperated Words"
     )
 
-    sentence = optional(
-        word,
-        seperated_words,
-        "Sentence",
-    )
+    sentence = andthen(word, optional(seperated_words), "Sentence")
     (_, res) = sentence(nd)
     assert res
 
@@ -172,16 +168,12 @@ def test_long_text():
         ),
         "Seperated Words",
     )
-    sentence_body = optional(
-        word,
-        seperated_words,
-        "Sentence Body",
-    )
+    sentence_body = andthen(word, optional(seperated_words), "Sentence Body")
 
     sentence = andthen(sentence_body, character("."), "Sentence")
-    text = optional(
+    text = andthen(
         sentence,
-        many(andthen(spaces, sentence, "Sentences"), "seperated sentences"),
+        optional(many(andthen(spaces, sentence, "Sentences"), "seperated sentences")),
         "Text",
     )
 
@@ -203,3 +195,14 @@ def test_any():
     (_, res) = many(any, "Any Char")(nd)
     assert res
     assert len(res.val) == len(input) + 1
+
+
+def test_skip():
+    space = satisfy(lambda c: c.isspace(), "Space")
+    spaces = atleast_one(space, "Spaces")
+
+    s = skip(spaces)
+    p = many(either([satisfy(lambda c: c.isalnum(), "Character"), s], "Def"), "Greedy")
+    nd = FileData("    asnbs   \n")
+    (d, res) = p(nd)
+    assert res

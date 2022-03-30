@@ -3,7 +3,7 @@ from __future__ import annotations
 from filedata.result import Result, Error, Success
 from filedata.filedata import FileData
 
-from typing import Any, Callable, Optional, Tuple, TypeVar
+from typing import Any, Callable, Iterable, Optional, Tuple, TypeVar
 
 _T = TypeVar("_T")
 
@@ -95,6 +95,17 @@ def left_seperate(optional: ParserFunction[Any], mandatory: ParserFunction[_T]):
     return parser
 
 
+def transform(p: ParserFunction[_T], f: Callable[[_T], _T2]) -> ParserFunction[_T2]:
+    def parser(data: FileData):
+        (d, res) = p(data)
+        if isinstance(res, Success):
+            return (d, Success(f(res.val)))
+        else:
+            return (data, res)
+
+    return parser
+
+
 def right_seperate(mandatory: ParserFunction[_T], opt: ParserFunction[_T2]):
     def parser(data: FileData):
         (d, res) = mandatory(data)
@@ -110,38 +121,16 @@ def right_seperate(mandatory: ParserFunction[_T], opt: ParserFunction[_T2]):
     return parser
 
 
-def optional(mandatory: ParserFunction[_T], opt: ParserFunction[_T2], label: str):
-    def parser(data: FileData):
-        (d, res) = mandatory(data)
-        if isinstance(res, Error):
-            return (data, Error(generic_errmsg(label, data, res.val)))
-
-        (d, opt_res) = opt(d)
-        if isinstance(opt_res, Error):
-            return (d, Success(res.val))
-        else:
-            return (d, Success((res.val, opt_res.val)))
-
-    parser.__name__ = label
-    return parser
-
-
-def transform(p: ParserFunction[_T], f: Callable[[_T], _T2]) -> ParserFunction[_T2]:
-    def parser(data: FileData):
-        (d, res) = p(data)
-        if isinstance(res, Success):
-            return (d, Success(f(res.val)))
-        else:
-            return (data, res)
-
-    return parser
+def optional(p: ParserFunction[_T]) -> ParserFunction[Optional[_T]]:
+    none: ParserFunction[None] = lambda data: (data, Success(None))
+    return either([p, none], f"Optional {p.__name__}")
 
 
 def many(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
     def parser(data: FileData):
         d = data.copy()
         collection: list[_T] = []
-        while 1:
+        while not d.isEOF():
             (d, res) = p(d)
             if isinstance(res, Success):
                 collection.append(res.val)
@@ -175,7 +164,7 @@ def atleast_one(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
     return parser
 
 
-def chain(parsers: list[ParserFunction[Any]], label: str):
+def chain(parsers: Iterable[ParserFunction[Any]], label: str):
     def parser(data: FileData):
         collection: list[Any] = []
         d = data.copy()
@@ -272,3 +261,11 @@ def string(reference: str) -> ParserFunction[tuple[str]]:
 
 def any(data: FileData):
     return satisfy(lambda c: True, "Anything")(data)
+
+
+def skip(p: ParserFunction[Any]):
+    def parser(data: FileData):
+        (d, _) = p(data)
+        return (d, Success(None))
+
+    return parser
