@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from functools import reduce
 from filedata.result import Result, Error, Success
 from filedata.filedata import FileData
 
@@ -13,6 +13,8 @@ _T2 = TypeVar("_T2")
 
 ParserFunction = Callable[[FileData], ExtractionResult[_T]]
 
+# ------------------------------------------------------------
+
 
 def generic_errmsg(label: str, data: FileData, reason: Optional[str] = None):
     return (
@@ -25,12 +27,18 @@ def generic_errmsg(label: str, data: FileData, reason: Optional[str] = None):
 def satisfy(predicate: Callable[[str], bool], label: str):
     def parser(data: FileData):
         new_data = data.copy()
-        if (char := data.read()) and predicate(char):
-            new_data.consume()
-            return (new_data, Success(char))
-        else:
-            errmsg = f"Predicate {label} failed at {data.cursor}"
-            return (data, Error(errmsg))
+
+        try:
+            char = data._current_character()
+            if predicate(char):
+                new_data._next_character_cursor()
+                return (new_data, Success(char))
+            else:
+                errmsg = f"Predicate {label} failed at {data.cursor}"
+
+                return (data, Error(errmsg))
+        except IndexError:
+            return (data, Error("EOF"))
 
     return parser
 
@@ -38,43 +46,59 @@ def satisfy(predicate: Callable[[str], bool], label: str):
 def character(c: str) -> ParserFunction[str]:
     def parser(data: FileData) -> ExtractionResult[str]:
         new_data = data.copy()
-        if (char := data.read()) and char == c:
-            new_data.consume()
-            return (new_data, Success(f"{c}"))
-        else:
-            return (data, Error(f"{c} not found at {data.cursor}"))
+        try:
+            if new_data._current_character() == c:
+                new_data._next_character_cursor()
+                return (new_data, Success(c))
+            else:
+                return (data, Error(f"{c} not found at {data.cursor}"))
+        except IndexError:
+            return (data, Error("EOF"))
 
     parser.__name__ = "Parse" + c
     return parser
 
 
 def andthen(
-    p1: ParserFunction[_T], p2: ParserFunction[_T2], label: str
+    p1: ParserFunction[_T], p2: ParserFunction[_T2], label: str = ""
 ) -> ParserFunction[tuple[_T, _T2]]:
     """define that 2 parsers are applied in succession"""
+    if not label:
+        label = f"{p1.__name__} and then {p2.__name__}"
 
     def parser(data: FileData) -> ExtractionResult[tuple[_T, _T2]]:
-        d1, res1 = p1(data)
+        d = data.copy()
+        d, res1 = p1(d)
         if isinstance(res1, Error):
             return (data, Error(generic_errmsg(label, data, res1.val)))
 
-        (d2, res2) = p2(d1)
+        (d, res2) = p2(d)
         if isinstance(res2, Error):
             return (data, Error(generic_errmsg(label, data, res2.val)))
         else:
-            return (d2, Success((res1.val, res2.val)))
+            return (d, Success((res1.val, res2.val)))
 
     parser.__name__ = label
     return parser
 
 
-def either(parsers: list[ParserFunction[Any]], label: str) -> ParserFunction[Any]:
+def _or(p1: ParserFunction[_T], p2: ParserFunction[_T2]):
     def parser(data: FileData):
-        for p in parsers:
-            (d, res) = p(data)
-            if isinstance(res, Success):
-                return (d, res)
-        return (data, Error(generic_errmsg(label, data)))
+        (d, res) = p1(data)
+        if res:
+            return (d, res)
+        else:
+            return p2(data)
+
+    parser.__name__ = f"Either {p1.__name__} or {p2.__name__}"
+    return parser
+
+
+def either(parsers: list[ParserFunction[Any]], label: str) -> ParserFunction[Any]:
+    p = reduce(_or, parsers)
+
+    def parser(data: FileData):
+        return p(data)
 
     parser.__name__ = label
     return parser
@@ -164,18 +188,27 @@ def atleast_one(p: ParserFunction[_T], label: str) -> ParserFunction[tuple[_T]]:
     return parser
 
 
-def chain(parsers: Iterable[ParserFunction[Any]], label: str):
-    def parser(data: FileData):
-        collection: list[Any] = []
-        d = data.copy()
-        for p in parsers:
-            (d, res) = p(d)
-            if isinstance(res, Error):
+_CHAINT = Tuple[_T, _T]
 
-                return (data, Error(generic_errmsg(label, data, res.val)))
-            else:
-                collection.append(res.val)
-        return (d, Success(tuple(collection)))
+
+def flatten(
+    t: "_CHAINT[_T]| tuple[_CHAINT[_T], _T]", coll: "list[_T]" = []
+) -> "list[_T]":
+    if isinstance(t[0], Tuple):
+        c = [t[1]]
+        c.extend(coll)
+        return flatten(t[0], c)
+    else:
+        c = [t[0], t[1]]
+        c.extend(coll)
+        return c
+
+
+def chain(parsers: Iterable[ParserFunction[Any]], label: str):
+    p = reduce(andthen, parsers)
+
+    def parser(data: FileData):
+        return p(data)
 
     parser.__name__ = label
     return parser
@@ -212,16 +245,10 @@ def seperate(
     p2: ParserFunction[_T2],
     label: str,
 ) -> ParserFunction[tuple[_T, _T2]]:
-
-    e = chain([p, seperator, p2], "")
+    e = transform(chain([p, seperator, p2], ""), lambda res: (res[0][0], res[1]))
 
     def parser(data: FileData):
-        (d, res) = e(data)
-        if isinstance(res, Error):
-            return (data, Error(generic_errmsg(label, data, res.val)))
-        else:
-            items = (res.val[0], res.val[2])
-            return (d, Success(items))
+        return e(data)
 
     parser.__name__ = label
     return parser
@@ -232,29 +259,31 @@ def atmost(p: ParserFunction[_T], n: int):
         d = data.copy()
         coll: list[_T] = []
         for _ in range(n):
-            (d2, res) = p(d)
+            (d, res) = p(d)
             if isinstance(res, Success):
                 coll.append(res.val)
             else:
                 return (d, Success(tuple(coll)))
-            d = d2
-        (d2, res) = p(d)
+        (d, res) = p(d)
         if res:
-            reason = f"Found {n+1} matches for {p.__name__} but only expected {n} in {d.cursor}"
+            reason = f"Found {n+1} matches for {p.__name__} but only expected {n} in {data.cursor}"
             return (
                 data,
                 Error(generic_errmsg(f"Atmost {n+1} {p.__name__}", data, reason)),
             )
         else:
-            return (d2, Success(tuple(coll)))
+            return (d, Success(tuple(coll)))
 
+    parser.__name__ = f"Maximal {n} times {p.__name__}"
     return parser
 
 
 def string(reference: str) -> ParserFunction[tuple[str]]:
+    parsers = [character(c) for c in reference]
+    p = chain(parsers, reference)
+
     def parser(data: FileData):
-        parsers = [character(c) for c in reference]
-        return chain(parsers, reference)(data)
+        return p(data)
 
     return parser
 
@@ -268,4 +297,5 @@ def skip(p: ParserFunction[Any]):
         (d, _) = p(data)
         return (d, Success(None))
 
+    parser.__name__ = f"Skip {p.__name__}"
     return parser

@@ -17,7 +17,6 @@ def test_character():
 
 def test_andthen():
     nd = FileData("a-c")
-
     a = character("a")
     sub = character("-")
     c = character("c")
@@ -25,6 +24,7 @@ def test_andthen():
     asub = andthen(a, sub, "")
     assert isinstance(asub(nd)[1], Success)
     expr = andthen(asub, c, "")
+
     (_, res) = expr(nd)
 
     assert isinstance(res, Success)
@@ -36,7 +36,7 @@ def test_multiple():
 
     a = character("a")
     dot = character(".")
-    mul_dots = multiple(dot, 5, "5-Dots")
+    mul_dots = transform(multiple(dot, 5, "5-Dots"), flatten)
     print("First Test -> Mul Dots")
     (_, res) = mul_dots(nd)
     assert isinstance(res, Success)
@@ -170,7 +170,10 @@ def test_long_text():
     )
     sentence_body = andthen(word, optional(seperated_words), "Sentence Body")
 
-    sentence = andthen(sentence_body, character("."), "Sentence")
+    sentence = transform(
+        andthen(sentence_body, character("."), "Sentence"),
+        lambda res: f"{res}.",
+    )
     text = andthen(
         sentence,
         optional(many(andthen(spaces, sentence, "Sentences"), "seperated sentences")),
