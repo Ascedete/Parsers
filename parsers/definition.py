@@ -1,6 +1,6 @@
 from __future__ import annotations
 from functools import reduce
-from filedata.result import Result, Error, Success
+from result.result import Result, Error, Success
 from filedata.filedata import FileData
 
 from typing import Any, Callable, Iterable, Optional, Tuple, TypeVar
