@@ -37,6 +37,8 @@ def satisfy(predicate: Callable[[str], bool], label: str):
                 errmsg = f"Predicate {label} failed at {data.cursor}"
 
                 return (data, Error(errmsg))
+        except KeyError:
+            return (data, Error("EOF"))
         except IndexError:
             return (data, Error("EOF"))
 
@@ -52,6 +54,8 @@ def character(c: str) -> ParserFunction[str]:
                 return (new_data, Success(c))
             else:
                 return (data, Error(f"{c} not found at {data.cursor}"))
+        except KeyError:
+            return (data, Error("EOF"))
         except IndexError:
             return (data, Error("EOF"))
 

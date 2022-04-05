@@ -182,7 +182,7 @@ def test_long_text():
 
     (d, res) = text(nd)
     assert res
-    assert d.consume() and d.isEOF()
+    assert d.isEOF()
 
 
 def test_string():
@@ -197,7 +197,7 @@ def test_any():
     nd = FileData(input)
     (_, res) = many(any, "Any Char")(nd)
     assert res
-    assert len(res.val) == len(input) + 1
+    assert len(res.val) == len(input)
 
 
 def test_skip():
