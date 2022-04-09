@@ -1,4 +1,3 @@
-from ntpath import join
 from parsers.definition import *
 
 
@@ -8,12 +7,10 @@ def test_character():
     a = character("a")
     c = character("c")
 
-    # assert isinstance(c(nd)[1], Error)
     res1 = a(nd)
     assert isinstance(res1, Success)
     res2 = c(res1.val[0])
     assert isinstance(res2, Success)
-    # assert isinstance(c(nd)[1], Success)
 
 
 def test_andthen():
@@ -90,6 +87,18 @@ def test_optional():
     num = FileData("2")
     res = _number(num)
     assert res.val[1] == 2
+
+
+def test_proxy():
+    nd = FileData("(1(23))")
+    (number, _number_inner) = Parser.proxy(float)
+    _number_inner[0] = (
+        satisfy(lambda c: c.isnumeric(), "Number") >> (lambda x: float("".join(x)))
+        | ((character("(") >= atleast(number, 1)) <= character(")"))
+    ) >> (lambda x: sum(x) if isinstance(x, list) else x)
+
+    res = number(nd)
+    assert res.val[1] == 6
 
 
 def test_satisfy():

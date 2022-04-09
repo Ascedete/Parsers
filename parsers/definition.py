@@ -46,7 +46,7 @@ class Parser(Generic[_T]):
 
         return Parser(f"Either {self.purpose} or {o.purpose}", parser)
 
-    def __and__(self, o: "Parser[_T2]"):
+    def __and__(self, o: "Parser[_T2]") -> Parser[tuple[_T, _T2]]:
         def parser(data: FileData):
             r1 = self(data)
             if not isinstance(r1, Success):
@@ -60,7 +60,7 @@ class Parser(Generic[_T]):
 
         return Parser(f"{self.purpose} then {o.purpose}", parser)
 
-    def __rshift__(self, f: "Callable[[_T], _T2]"):
+    def __rshift__(self, f: "Callable[[_T], _T2]") -> Parser[_T2]:
         def parser(data: FileData):
             if isinstance(r := self(data), Success):
                 return (r.val[0], f(r.val[1]))
@@ -81,8 +81,14 @@ class Parser(Generic[_T]):
         return _p
 
     def __ge__(self: "Parser[_T]", o: "Parser[_T2]") -> "Parser[_T2]":
-        _p = ((self & o) >> (lambda x: x[1])) % f"only {o.purpose}"
+        _p: Parser[_T2] = ((self & o) >> (lambda x: x[1])) % f"only {o.purpose}"
         return _p
+
+    @classmethod
+    def proxy(cls, t: _T = Any):
+        dummy: "list[Parser[_T]]" = [Parser("Unknown", lambda data: None)]
+        wrapper: Parser[_T] = Parser(dummy[0].purpose, lambda data: dummy[0].fn(data))
+        return (wrapper, dummy)
 
 
 # ------------------------------------------------------------
