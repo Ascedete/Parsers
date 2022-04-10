@@ -1,15 +1,32 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
-from result.result import Error, Success, Result
+from result.type_defines import Error, Success, Result
 from filedata.filedata import FileData, FilePosition
-from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar
+from typing import Any, Callable, Generic, Iterable, Tuple, TypeVar
 
 _T = TypeVar("_T")
 _T2 = TypeVar("_T2")
 
-ParseResult = Result[Tuple[FileData, _T]]
-PFunc = Callable[[FileData], Optional[Tuple[FileData, _T]]]
+PSuccess = tuple[FileData, _T]
+
+
+@dataclass(frozen=True, eq=True)
+class PError:
+    position: FilePosition
+    label: str
+    reason: str = ""
+
+    def __repr__(self) -> str:
+        return (
+            f"Failed to parse {self.label} at {self.position}" ""
+            if self.reason == ""
+            else f"-> {self.reason}"
+        )
+
+
+PResult = Result[PSuccess[_T], PError]
+PFunc = Callable[[FileData], PResult[_T]]
 
 
 @dataclass(frozen=True)
@@ -18,61 +35,74 @@ class Parser(Generic[_T]):
     purpose: str
     fn: PFunc[_T]
 
-    def _errmsg(self, position: FilePosition):
-        return f"Failed to parse {self.purpose} at {position}"
+    def __call__(self, data: FileData) -> PResult[_T]:
+        res = self.fn(data)
+        if isinstance(res, Success):
+            return res
+        else:
+            return self._create_error(res)
 
-    def __call__(self, data: FileData) -> ParseResult[_T]:
-        try:
-            if res := self.fn(data):
-                return Success(res)
-            else:
-                return Error(self._errmsg(data.cursor))
-        except (KeyError, IndexError):
-            return Error(f"Cannot parse from given file at position {data.cursor}")
+    def _create_error(self, res: Error[PError], label: str = ""):
+        reason = (
+            res.val.reason
+            if res.val.reason != ""
+            else f"during parsing of {res.val.label}"
+        )
+        if not label:
+            _label = self.purpose
+        else:
+            _label = label
+        return Error(PError(res.val.position, _label, reason))
 
     def __mod__(self, label: str) -> "Parser[_T]":
         return Parser(label, self.fn)
 
     # Define Combinators
     def __or__(self, o: "Parser[_T2]") -> "Parser[_T|_T2]":
-        def parser(data: FileData):
+        def parser(data: FileData) -> "PResult[_T|_T2]":
             res = self(data)
             if isinstance(res, Success):
-                return (res.val[0], res.val[1])
+                return res
             else:
                 res = o(data)
-                if isinstance(res, Success):
-                    return (res.val[0], res.val[1])
+                if isinstance(res, Error):
+                    return Error(
+                        PError(data.cursor, f"Either {self.purpose} or {o.purpose}")
+                    )
+                else:
+                    return res
 
         return Parser(f"Either {self.purpose} or {o.purpose}", parser)
 
     def __and__(self, o: "Parser[_T2]") -> Parser[tuple[_T, _T2]]:
+        _label = f"{self.purpose} then {o.purpose}"
+
         def parser(data: FileData):
             r1 = self(data)
             if not isinstance(r1, Success):
-                return
+                return self._create_error(r1, _label)
 
             r2 = o(r1.val[0])
             if not isinstance(r2, Success):
-                return
+                return self._create_error(r2, _label)
             else:
-                return (r2.val[0], (r1.val[1], r2.val[1]))
+                return Success((r2.val[0], (r1.val[1], r2.val[1])))
 
-        return Parser(f"{self.purpose} then {o.purpose}", parser)
+        return Parser(_label, parser)
 
     def __rshift__(self, f: "Callable[[_T], _T2]") -> Parser[_T2]:
         def parser(data: FileData):
             if isinstance(r := self(data), Success):
-                return (r.val[0], f(r.val[1]))
+                return Success((r.val[0], f(r.val[1])))
             else:
-                return
+                return self._create_error(r)
 
         return Parser(self.purpose, parser)
 
     def __invert__(self):
         """Optional Parser"""
-        none = Parser("None", lambda data: (data, None))
-        _p = (self | none) % f"Optional {self.purpose}"
+
+        _p = (self | _none_parser) % f"Optional {self.purpose}"
 
         return _p
 
@@ -86,10 +116,17 @@ class Parser(Generic[_T]):
 
     @classmethod
     def proxy(cls, t: _T = Any):
-        dummy: "list[Parser[_T]]" = [Parser("Unknown", lambda data: None)]
+        dummy: "list[Parser[_T]]" = [
+            Parser(
+                "Unknown",
+                lambda data: Error(PError(data.cursor, "Unknown", "Not Implemented!")),
+            )
+        ]
         wrapper: Parser[_T] = Parser(dummy[0].purpose, lambda data: dummy[0].fn(data))
         return (wrapper, dummy)
 
+
+_none_parser = Parser("None", lambda data: Success((data, None)))
 
 # ------------------------------------------------------------
 
@@ -97,12 +134,17 @@ class Parser(Generic[_T]):
 def satisfy(predicate: Callable[[str], bool], label: str):
     def parser(data: FileData):
         new_data = data.copy()
-        char = data._current_character()
-        if predicate(char):
-            new_data._next_character_cursor()
-            return (new_data, char)
-        else:
-            return
+        try:
+            char = data._current_character()
+            if predicate(char):
+                new_data._next_character_cursor()
+                return Success((new_data, char))
+            else:
+                return Error(
+                    PError(data.cursor, label, f"found {char} didn't fulfill {label}")
+                )
+        except (KeyError, IndexError):
+            return Error(PError(data.cursor, label, "EOF"))
 
     return Parser(label, parser)
 
@@ -110,12 +152,14 @@ def satisfy(predicate: Callable[[str], bool], label: str):
 def character(c: str) -> Parser[str]:
     def parser(data: FileData):
         new_data = data.copy()
-
-        if new_data._current_character() == c:
-            new_data._next_character_cursor()
-            return (new_data, c)
-        else:
-            return
+        try:
+            if new_data._current_character() == c:
+                new_data._next_character_cursor()
+                return Success((new_data, c))
+            else:
+                return Error(PError(data.cursor, f"parse {c}"))
+        except (KeyError, IndexError):
+            return Error(PError(data.cursor, f"parse {c}", "EOF"))
 
     return Parser(f"Parse {c}", parser)
 
@@ -145,23 +189,31 @@ def many(p: Parser[_T]):
         while isinstance((r_new := p(last)), Success):
             coll.append(r_new.val[1])
             last = r_new.val[0]
-        return (last, coll)
+        return Success((last, coll))
 
     return Parser(f"Many {p.purpose}", parser)
 
 
 def atleast(p: Parser[_T], n: int):
     _p = many(p)
+    _label = f"Atleast {n} times {p.purpose}"
 
     def parser(data: FileData):
         res = _p(data)
-        if not res or len(res.val[1]) < n:
-            return
+        if not isinstance(res, Success):
+            return p._create_error(res, _label)
+        elif len(res.val[1]) < n:
+            return Error(
+                PError(
+                    data.cursor,
+                    _label,
+                    f"expected atleast {n} but got only {len(res.val[1])}",
+                )
+            )
         else:
-            assert isinstance(res, Success)
-            return (res.val[0], res.val[1])
+            return Success((res.val[0], res.val[1]))
 
-    return Parser(f"Atleast {n} times {p.purpose}", parser)
+    return Parser(_label, parser)
 
 
 _CHAINT = Tuple[_T, _T]
