@@ -19,9 +19,8 @@ class PError:
 
     def __repr__(self) -> str:
         return (
-            f"Failed to parse {self.label} at {self.position}" ""
-            if self.reason == ""
-            else f"-> {self.reason}"
+            f"Failed to parse {self.label} at {self.position}\n"
+            f"{'' if self.reason == '' else '-> ' + self.reason}"
         )
 
 

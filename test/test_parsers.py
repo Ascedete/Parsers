@@ -117,16 +117,18 @@ def test_ignore_left():
     res = p(nd)
     assert res.val[1] == "Hello"
 
+def test_error(): 
+    _a_b = character('a') & character('b')
+    nd = FileData('ac')
+    res = _a_b(nd)
+    assert not res
+    assert repr(res.val)    
 
 def test_termination():
     """Make sure that parsing terminates with error after input parsed"""
     nd = FileData("Alle lieben Leute")
     char = satisfy(lambda c: c.isalnum(), "Alphanumeric Character") | character("_")
 
-    # either(
-    #     [satisfy(lambda c: c.isalnum(), "Alphanumeric Character"), character("_")],
-    #     "Character",
-    # )
     word = atleast(char, 1) >> (lambda x: "".join(x))
     seperated_words = many(character(" ") >= word)
 
