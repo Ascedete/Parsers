@@ -168,7 +168,7 @@ def character(c: str) -> Parser[str]:
                     PError(
                         data.cursor,
                         f"Parse {c}",
-                        f"got {new_data._current_character()}",
+                        f"got {new_data._current_character()} but expected {c}",
                     )
                 )
 
