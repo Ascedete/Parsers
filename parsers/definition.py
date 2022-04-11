@@ -113,6 +113,14 @@ class Parser(Generic[_T]):
         _p: Parser[_T2] = ((self & o) >> (lambda x: x[1])) % f"only {o.purpose}"
         return _p
 
+    def __matmul__(self, f: Callable[[PResult[_T]], None]) -> Parser[_T]:
+        def parser(data: FileData):
+            res = self(data)
+            f(res)
+            return res
+
+        return Parser(self.purpose, parser)
+
     @classmethod
     def proxy(cls, t: _T = Any):
         dummy: "list[Parser[_T]]" = [
@@ -156,7 +164,14 @@ def character(c: str) -> Parser[str]:
                 new_data._next_character_cursor()
                 return Success((new_data, c))
             else:
-                return Error(PError(data.cursor, f"parse {c}"))
+                return Error(
+                    PError(
+                        data.cursor,
+                        f"Parse {c}",
+                        f"got {new_data._current_character()}",
+                    )
+                )
+
         except (KeyError, IndexError):
             return Error(PError(data.cursor, f"parse {c}", "EOF"))
 

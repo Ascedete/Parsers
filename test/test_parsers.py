@@ -1,3 +1,4 @@
+from os import remove
 from parsers.definition import *
 
 
@@ -11,6 +12,29 @@ def test_character():
     assert isinstance(res1, Success)
     res2 = c(res1.val[0])
     assert isinstance(res2, Success)
+
+
+def test_logger():
+    nd = FileData("aac")
+
+    def log_err(r: PResult[Any]):
+        if isinstance(r, Error):
+            with open("log.txt", "w+") as fd:
+                fd.write(str(r.val))
+
+    ap = character("a")
+    bp = character("b") @ log_err
+    cp = character("c")
+
+    p = ap & (bp | ap) & cp
+    res = p(nd)
+    try:
+        assert res
+        with open("log.txt", "r") as fd:
+            d = FileData(fd)
+            assert len(d.text) == 2
+    finally:
+        remove("log.txt")
 
 
 def test_andthen():
@@ -117,12 +141,14 @@ def test_ignore_left():
     res = p(nd)
     assert res.val[1] == "Hello"
 
-def test_error(): 
-    _a_b = character('a') & character('b')
-    nd = FileData('ac')
+
+def test_error():
+    _a_b = character("a") & character("b")
+    nd = FileData("ac")
     res = _a_b(nd)
     assert not res
-    assert repr(res.val)    
+    assert repr(res.val)
+
 
 def test_termination():
     """Make sure that parsing terminates with error after input parsed"""

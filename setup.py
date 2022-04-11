@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="ParserCombinators",
-    version="0.2.3",
+    version="0.2.4",
     description="Parser Combinators",
     packages=["parsers"],
     install_requires=[
