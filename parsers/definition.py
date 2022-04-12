@@ -8,7 +8,7 @@ from typing import Any, Callable, Generic, Iterable, Tuple, TypeVar
 _T = TypeVar("_T")
 _T2 = TypeVar("_T2")
 
-PSuccess = tuple[FileData, _T]
+PSuccess = Tuple[FileData, _T]
 
 
 @dataclass(frozen=True, eq=True)
@@ -262,3 +262,12 @@ def any():
 
 def ignore(p: Parser[Any]):
     return p >> (lambda _: None)
+
+
+def step_over(lines: int, columns: int):
+    def parser(data: FileData):
+        nd = data.copy()
+        nd.move_cursor(nd.cursor + (lines, columns))
+        return Success((nd, None))
+
+    return Parser(f"Skip over lines: {lines}, columns: {columns}", parser)

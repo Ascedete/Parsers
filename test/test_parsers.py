@@ -142,6 +142,26 @@ def test_ignore_left():
     assert res.val[1] == "Hello"
 
 
+def test_step_over():
+    nd = FileData("Not relevantHere nicey")
+    _skip = step_over(0, len("Not relevant"))
+    _word = (
+        many(satisfy(lambda c: c.isalnum(), "Char")) >> (lambda x: "".join(x))
+    ) % "Word"
+    _space = character(" ")
+    p = (_skip >= (_word <= _space)) & _word
+    res = p(nd)
+    assert res
+    assert res.val[1] == ("Here", "nicey")
+
+    nd = FileData('\n\nHere interesting')
+    _skip = step_over(2, 0)
+    p = (_skip >= (_word <= _space)) & _word
+    res = p(nd)
+    assert res
+    assert res.val[1] == ("Here", "interesting")
+
+
 def test_error():
     _a_b = character("a") & character("b")
     nd = FileData("ac")
