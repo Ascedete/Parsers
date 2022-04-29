@@ -132,6 +132,26 @@ class Parser(Generic[_T]):
         wrapper: Parser[_T] = Parser(dummy[0].purpose, lambda data: dummy[0].fn(data))
         return (wrapper, dummy)
 
+    def branch(self, on_success: Parser[_T2], otherwise: Parser[Any]):
+        """Use *on_success* if self successfully parses, else use *otherwise*
+
+        Args:
+            on_success (Parser[_T2])
+            otherwise (Parser[Any])
+        """
+
+        def parser(data: FileData):
+            res = self(data)
+            if res:
+                return on_success(res.expect("")[0])
+            else:
+                return otherwise(data)
+
+        return Parser(
+            f"if{self.purpose} get {on_success.purpose} else {otherwise.purpose}",
+            parser,
+        )
+
 
 _none_parser = Parser("None", lambda data: Success((data, None)))
 

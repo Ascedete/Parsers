@@ -154,7 +154,7 @@ def test_step_over():
     assert res
     assert res.val[1] == ("Here", "nicey")
 
-    nd = FileData('\n\nHere interesting')
+    nd = FileData("\n\nHere interesting")
     _skip = step_over(2, 0)
     p = (_skip >= (_word <= _space)) & _word
     res = p(nd)
@@ -181,6 +181,23 @@ def test_termination():
     sentence = (word & ~(seperated_words)) >> (lambda x: [x[0]] + x[1])
     res = sentence(nd)
     assert res.val[1] == ["Alle", "lieben", "Leute"]
+
+
+def test_if_else():
+    trigger = string("-->")
+    a = string("Hello")
+    b = string("olleH")
+
+    a_if_trigger_else_b = trigger.branch(a, b) >> (lambda x: ''.join(x))
+
+    res = a_if_trigger_else_b(FileData("-->Hello"))
+    assert res
+    assert res.expect()[1] == "Hello"
+
+    data = FileData("olleH")
+    res = a_if_trigger_else_b(data)
+    assert res
+    assert res.expect()[1] == "olleH"
 
 
 def test_long_text():
