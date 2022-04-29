@@ -125,6 +125,29 @@ def test_proxy():
     assert res.val[1] == 6
 
 
+def test_move_to():
+    txt = """//psl HVDIFF_USAGE_check : assert
+// always ( rose(hvdiff_cp) && adc_sel==11 && adc_en ->
+//            ((selsc_sig >0  && selsc_sig<15  && selsc_ref==0) ||
+//             (selsc_sig==0                   && selsc_ref==7) ||
+//             (selsc_sig==15 && (selsc_ref==0 || selsc_ref==7))))
+//          @(negedge CLK)
+//          report "Incorrect SCAMP configuration (combination of signal and reference)."
+//          severity warning;"""
+
+    data = FileData(txt)
+    _space = character(" ")
+    _word = (
+        many(satisfy(lambda c: c.isalnum(), "Char")) >> (lambda x: "".join(x))
+    ) % "Word"
+    p = ((move_to("@") & character("@") & character("(")) >= _word) & (
+        many(character(" ")) >= _word
+    )
+    res = p(data)
+    assert res
+    assert res.val[1] == ("negedge", "CLK")
+
+
 def test_satisfy():
     expr = FileData(" \n\tc")
     space = satisfy(lambda c: c.isspace(), "Whitespace")

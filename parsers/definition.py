@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
 from result.type_defines import Error, Success, Result
-from filedata.filedata import FileData, FilePosition
+from filedata.filedata import FileData, FilePosition, seek
 from typing import Any, Callable, Generic, Iterable, Tuple, TypeVar
 
 _T = TypeVar("_T")
@@ -291,3 +291,21 @@ def step_over(lines: int, columns: int):
         return Success((nd, None))
 
     return Parser(f"Skip over lines: {lines}, columns: {columns}", parser)
+
+
+def move_to(trigger: str):
+    def parser(data: FileData):
+        if not (pos := seek(data, trigger)):
+            return Error(
+                PError(
+                    data.cursor,
+                    f"Move to {trigger}",
+                    f"{trigger} not found from {data.cursor}",
+                )
+            )
+
+        nd = data.copy()
+        nd.move_cursor(pos)
+        return Success((nd, None))
+
+    return Parser(f"Move to {trigger}", parser)
