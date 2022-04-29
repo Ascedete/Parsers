@@ -1,4 +1,6 @@
 from os import remove
+
+import pytest
 from parsers.definition import *
 
 
@@ -12,6 +14,19 @@ def test_character():
     assert isinstance(res1, Success)
     res2 = c(res1.val[0])
     assert isinstance(res2, Success)
+
+
+def test_repeat_until():
+    nd = FileData("1111112")
+    one = character("1")
+    two = character("2")
+    parser = one.repeat_until(two)
+    res = parser(nd)
+    assert len(res.expect()[1]) == 7
+
+    nd = FileData("111")
+    with pytest.raises(ValueError):
+        parser(nd).expect()
 
 
 def test_logger():
@@ -211,7 +226,7 @@ def test_if_else():
     a = string("Hello")
     b = string("olleH")
 
-    a_if_trigger_else_b = trigger.branch(a, b) >> (lambda x: ''.join(x))
+    a_if_trigger_else_b = trigger.branch(a, b) >> (lambda x: "".join(x))
 
     res = a_if_trigger_else_b(FileData("-->Hello"))
     assert res

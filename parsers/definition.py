@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
+from multiprocessing.sharedctypes import Value
 from result.type_defines import Error, Success, Result
 from filedata.filedata import FileData, FilePosition, seek
 from typing import Any, Callable, Generic, Iterable, Tuple, TypeVar
@@ -151,6 +152,34 @@ class Parser(Generic[_T]):
             f"if{self.purpose} get {on_success.purpose} else {otherwise.purpose}",
             parser,
         )
+
+    def repeat_until(self, until: Parser[_T2]) -> Parser[list[_T | _T2]]:
+        _label = f"repeat {self.purpose} until {until.purpose}"
+
+        def parser(data: FileData):
+            container: "list[_T|_T2]" = []
+            current = data.copy()
+
+            while 1:
+                res = until(current)
+                if res:
+                    current, new = res.expect()
+                    container.append(new)
+                    return Success((current, container))
+
+                try:
+                    current, new = self(current).expect()
+                    container.append(new)
+
+                except ValueError:
+                    return Error(
+                        PError(
+                            current.cursor,
+                            _label,
+                        )
+                    )
+
+        return Parser(_label, parser)
 
 
 _none_parser = Parser("None", lambda data: Success((data, None)))
